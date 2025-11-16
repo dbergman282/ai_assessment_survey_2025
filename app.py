@@ -196,7 +196,7 @@ def load_assessments_for_course(instructor_code: str, course_code: str) -> pd.Da
         ]
     ]
 
-    df = df_types.merge(df_db, on="assessment_type", how="left")
+    df = df_types.merge(df_db, on("assessment_type"), how="left")
     return df
 
 
@@ -253,6 +253,39 @@ def main_view():
     st.success(f"You are logged in as **{user['name']}**.")
     st.write(f"**Email:** {user['email']}")
     st.write(f"**Code:** `{instructor_code}`")
+
+    # ---------- Instructions section ----------
+    st.markdown("---")
+    with st.expander("ℹ️ Instructions (please read first)", expanded=True):
+        st.markdown(
+            """
+### What we’re asking you to do
+
+Please use this portal to describe how you currently assess students in your courses and how those assessments relate to AI tools.
+
+**For this survey, please:**
+
+1. **Add a course entry for every distinct course you taught this academic year.**
+2. **If you teach the same course in multiple modalities**  
+   (e.g., in-person and online asynchronous),  
+   create **a separate course entry for each modality**.
+3. For each course entry:
+   - Provide basic course information (title, term, modality, approximate enrollment).
+   - Use the **Assessment structure** section to indicate:
+     - How much each assessment type contributes to the **overall course grade**  
+       (these percentages must sum to **100**).
+     - How susceptible each assessment type is to **AI misuse**.
+     - How much you have **modified** that component since the “AI revolution”  
+       (0 = not at all, 100 = completely redesigned).
+4. You can **return and edit** your entries at any time:
+   - Use **“Your courses”** to review what you’ve entered.
+   - Use **“Select a course to manage”** to switch which course you’re editing.
+   - Remember to click **“Save assessments for this course”** when you change the matrix.
+
+If something doesn’t fit perfectly (e.g., unusual assessments), please use the
+closest category and interpret the questions in a way that makes sense for your course.
+"""
+        )
 
     st.markdown("---")
 
