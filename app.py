@@ -69,8 +69,16 @@ def login_view():
             st.error("Please enter a code.")
             return
 
-        supabase = get_supabase_client()
-        res = supabase.table("instructors").select("code,name,email").eq("code", code).execute()
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("instructors").select("code,name,email").eq("code", code).execute()
+        except Exception as e:
+            st.error(
+                "There was a problem connecting to the database while checking your code. "
+                "Please try again in a moment or contact David."
+            )
+            st.caption(f"Technical details (for admin): {e}")
+            return
 
         if res.data:
             user = res.data[0]
@@ -196,7 +204,8 @@ def load_assessments_for_course(instructor_code: str, course_code: str) -> pd.Da
         ]
     ]
 
-    df = df_types.merge(df_db, on("assessment_type"), how="left")
+    # BUG FIX: correct merge syntax (on="assessment_type")
+    df = df_types.merge(df_db, on="assessment_type", how="left")
     return df
 
 
@@ -213,9 +222,11 @@ def save_assessments_for_course(instructor_code: str, course_code: str, df: pd.D
 
     total = float(df["percent_of_class_assessment"].sum())
 
+    # Validation for total 100
     if abs(total - 100.0) > 0.5:  # allow slight rounding error
         raise ValueError(
-            f"Total percent of class assessment must sum to 100. Current total is {total:.1f}."
+            f"The 'Percent of class assessment' values must sum to 100. "
+            f"Right now they sum to {total:.1f}. Please adjust the numbers and try again."
         )
 
     df["ai_misuse_susceptibility"] = df["ai_misuse_susceptibility"].fillna(0)
@@ -234,6 +245,7 @@ def save_assessments_for_course(instructor_code: str, course_code: str, df: pd.D
 
     rows = df[cols].to_dict(orient="records")
 
+    # Replace existing rows atomically-ish
     supabase.table("assessments").delete().eq("instructor_code", instructor_code).eq(
         "course_code", course_code
     ).execute()
@@ -322,22 +334,40 @@ closest category and interpret the questions in a way that makes sense for your 
                 if not course_code.strip():
                     st.error("Course code is required.")
                 else:
-                    add_course_for_instructor(
-                        instructor_code=instructor_code,
-                        course_code=course_code.strip(),
-                        course_title=course_title.strip(),
-                        term=term.strip(),
-                        level=level.strip(),
-                        modality=modality.strip(),
-                        approx_students=int(approx_students),
-                    )
-                    st.success("Course added.")
-                    st.rerun()
+                    try:
+                        add_course_for_instructor(
+                            instructor_code=instructor_code,
+                            course_code=course_code.strip(),
+                            course_title=course_title.strip(),
+                            term=term.strip(),
+                            level=level.strip(),
+                            modality=modality.strip(),
+                            approx_students=int(approx_students),
+                        )
+                        st.success("Course added.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(
+                            "There was an error while saving this course. "
+                            "Please try again, and if the problem persists, contact David."
+                        )
+                        st.caption(f"Technical details (for admin): {e}")
 
     st.markdown("---")
 
     # ---------- Load courses ----------
-    courses = load_courses_for_instructor(instructor_code)
+    try:
+        courses = load_courses_for_instructor(instructor_code)
+    except Exception as e:
+        st.error(
+            "There was an error loading your courses from the database. "
+            "Please refresh the page or try again later."
+        )
+        st.caption(f"Technical details (for admin): {e}")
+        if st.button("Log out"):
+            st.session_state.clear()
+            st.rerun()
+        return
 
     if not courses:
         st.info("You haven't added any courses yet.")
@@ -430,28 +460,42 @@ closest category and interpret the questions in a way that makes sense for your 
                 update_clicked = st.form_submit_button("Save course changes")
 
             if update_clicked:
-                update_course_for_instructor(
-                    course_id=selected_course["id"],
-                    instructor_code=instructor_code,
-                    course_title=course_title.strip(),
-                    term=term.strip(),
-                    level=level.strip(),
-                    modality=modality.strip(),
-                    approx_students=int(approx_students),
-                )
-                st.success("Course information updated.")
-                st.rerun()
+                try:
+                    update_course_for_instructor(
+                        course_id=selected_course["id"],
+                        instructor_code=instructor_code,
+                        course_title=course_title.strip(),
+                        term=term.strip(),
+                        level=level.strip(),
+                        modality=modality.strip(),
+                        approx_students=int(approx_students),
+                    )
+                    st.success("Course information updated.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "There was an error updating this course. "
+                        "Please try again, and if the problem continues, contact David."
+                    )
+                    st.caption(f"Technical details (for admin): {e}")
 
         with col_delete:
             st.markdown("##### Danger zone")
             if st.button("Delete this course"):
-                delete_course_for_instructor(
-                    course_id=selected_course["id"],
-                    instructor_code=instructor_code,
-                    course_code=selected_course["course_code"],
-                )
-                st.success("Course (and its assessments) deleted.")
-                st.rerun()
+                try:
+                    delete_course_for_instructor(
+                        course_id=selected_course["id"],
+                        instructor_code=instructor_code,
+                        course_code=selected_course["course_code"],
+                    )
+                    st.success("Course (and its assessments) deleted.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "There was an error deleting this course. "
+                        "Please try again, and if the problem continues, contact David."
+                    )
+                    st.caption(f"Technical details (for admin): {e}")
 
     st.markdown("---")
 
@@ -472,9 +516,17 @@ You can adjust from there.
 """
         )
 
-        assessments_df = load_assessments_for_course(
-            instructor_code, selected_course["course_code"]
-        )
+        try:
+            assessments_df = load_assessments_for_course(
+                instructor_code, selected_course["course_code"]
+            )
+        except Exception as e:
+            st.error(
+                "There was an error loading the assessment data for this course. "
+                "Please refresh the page or try another course."
+            )
+            st.caption(f"Technical details (for admin): {e}")
+            assessments_df = pd.DataFrame({"assessment_type": ASSESSMENT_TYPES})
 
         current_total = (
             assessments_df["percent_of_class_assessment"].fillna(0).sum()
@@ -515,8 +567,16 @@ You can adjust from there.
                 st.success("Assessments saved.")
             except ValueError as ve:
                 st.error(str(ve))
+                st.info(
+                    "Tip: Check the 'Percent of class assessment' column and make sure "
+                    "the values across all rows add up to exactly 100."
+                )
             except Exception as e:
-                st.error(f"Error saving assessments: {e}")
+                st.error(
+                    "There was an unexpected error while saving your assessments. "
+                    "You can try again, and if the problem continues, please contact David."
+                )
+                st.caption(f"Technical details (for admin): {e}")
 
     st.markdown("---")
 
